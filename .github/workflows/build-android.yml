@@ -71,6 +71,19 @@ jobs:
             printf '%s\n' "$ENV_FILE_CONTENT" > .env.live
           fi
 
+      - name: Write Firebase google-services.json
+        env:
+          GOOGLE_SERVICES_B64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_ANDROID }}
+        working-directory: real-code
+        run: |
+          if [ "$BUILD_ENV" = "staging" ]; then
+            mkdir -p firebase/staging
+            printf '%s' "$GOOGLE_SERVICES_B64" | base64 --decode > firebase/staging/google-services.json
+          else
+            mkdir -p firebase/production
+            printf '%s' "$GOOGLE_SERVICES_B64" | base64 --decode > firebase/production/google-services.json
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -195,6 +208,19 @@ jobs:
             printf '%s\n' "$ENV_FILE_CONTENT" > .env.stg
           else
             printf '%s\n' "$ENV_FILE_CONTENT" > .env.live
+          fi
+
+      - name: Write Firebase google-services.json
+        env:
+          GOOGLE_SERVICES_B64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_ANDROID }}
+        working-directory: real-code
+        run: |
+          if [ "$BUILD_ENV" = "staging" ]; then
+            mkdir -p firebase/staging
+            printf '%s' "$GOOGLE_SERVICES_B64" | base64 --decode > firebase/staging/google-services.json
+          else
+            mkdir -p firebase/production
+            printf '%s' "$GOOGLE_SERVICES_B64" | base64 --decode > firebase/production/google-services.json
           fi
 
       - name: Setup Node.js
