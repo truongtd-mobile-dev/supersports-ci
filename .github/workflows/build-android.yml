@@ -127,14 +127,40 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Cache Gradle
+      - name: Cache Gradle dependencies
         uses: actions/cache@v4
         with:
           path: |
-            ~/.gradle/caches
+            ~/.gradle/caches/modules-2
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('real-code/android/**/*.gradle*', 'real-code/android/**/gradle-wrapper.properties') }}
-          restore-keys: gradle-
+          key: gradle-deps-${{ hashFiles('real-code/yarn.lock') }}
+          restore-keys: gradle-deps-
+
+      - name: Cache Android native build
+        id: cache-android
+        uses: actions/cache@v4
+        with:
+          path: real-code/android
+          key: android-build-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock') }}-${{ github.event.inputs.environment }}
+          restore-keys: android-build-
+
+      - name: Write Android keystore (LIVE only)
+        if: github.event.inputs.environment == 'live'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: real-code
+        run: |
+          mkdir -p credentials
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > credentials/thelook.jks
+          {
+            printf 'storeFile=credentials/thelook.jks\n'
+            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > keystore.properties
 
       - name: Build APK via fastlane
         working-directory: real-code
@@ -145,6 +171,7 @@ jobs:
           GG_DRIVE_FOLDER_ID: ${{ vars.GG_DRIVE_FOLDER_ID }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
           FASTLANE_DISABLE_UPDATE_CHECK: "true"
+          ANDROID_CACHE_HIT: ${{ steps.cache-android.outputs.cache-hit }}
         run: bundle exec fastlane setup platform:android env:"$BUILD_ENV" kind:apk
 
       - name: Notify failure
@@ -266,14 +293,22 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Cache Gradle
+      - name: Cache Gradle dependencies
         uses: actions/cache@v4
         with:
           path: |
-            ~/.gradle/caches
+            ~/.gradle/caches/modules-2
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('real-code/android/**/*.gradle*', 'real-code/android/**/gradle-wrapper.properties') }}
-          restore-keys: gradle-
+          key: gradle-deps-${{ hashFiles('real-code/yarn.lock') }}
+          restore-keys: gradle-deps-
+
+      - name: Cache Android native build
+        id: cache-android
+        uses: actions/cache@v4
+        with:
+          path: real-code/android
+          key: android-build-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock') }}-${{ github.event.inputs.environment }}
+          restore-keys: android-build-
 
       - name: Write Android keystore (LIVE only)
         if: github.event.inputs.environment == 'live'
@@ -302,6 +337,7 @@ jobs:
           GG_DRIVE_FOLDER_ID: ${{ vars.GG_DRIVE_FOLDER_ID }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
           FASTLANE_DISABLE_UPDATE_CHECK: "true"
+          ANDROID_CACHE_HIT: ${{ steps.cache-android.outputs.cache-hit }}
         run: bundle exec fastlane setup platform:android env:"$BUILD_ENV" kind:aab
 
       - name: Notify failure
