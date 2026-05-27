@@ -141,8 +141,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: real-code/android
-          key: android-build-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock') }}-${{ github.event.inputs.environment }}
-          restore-keys: android-build-
+          key: android-build-${{ github.event.inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**') }}
+          restore-keys: android-build-${{ github.event.inputs.environment }}-
 
       - name: Write Android keystore (LIVE only)
         if: github.event.inputs.environment == 'live'
@@ -307,8 +307,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: real-code/android
-          key: android-build-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock') }}-${{ github.event.inputs.environment }}
-          restore-keys: android-build-
+          key: android-build-${{ github.event.inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**') }}
+          restore-keys: android-build-${{ github.event.inputs.environment }}-
 
       - name: Write Android keystore (LIVE only)
         if: github.event.inputs.environment == 'live'
