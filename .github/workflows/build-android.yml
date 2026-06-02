@@ -171,13 +171,13 @@ jobs:
           GG_DRIVE_FOLDER_ID: ${{ vars.GG_DRIVE_FOLDER_ID }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
           FASTLANE_DISABLE_UPDATE_CHECK: "true"
-          ANDROID_CACHE_HIT: ${{ steps.cache-android.outputs.cache-hit }}
+          PREBUILD_CACHE_HIT: ${{ steps.cache-android.outputs.cache-hit }}
         run: bundle exec fastlane setup platform:android env:"$BUILD_ENV" kind:apk
 
       - name: Notify failure
         if: failure()
         env:
-          WEBHOOK_URL: ${{ vars.NOTIFICATION_WEBHOOK_URL }}
+          WEBHOOK_URL: ${{ secrets.NOTIFICATION_WEBHOOK_URL }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
         run: |
           ERROR_MSG="APK build failed in job ${GITHUB_JOB} (run #${GITHUB_RUN_NUMBER})"
@@ -185,7 +185,7 @@ jobs:
           curl -X POST \
             -H 'Content-Type: application/json' \
             -d "{\"project\":\"${PROJECT_NAME}\",\"message\":\"${ERROR_MSG}\",\"status\":1,\"link\":\"${RUN_URL}\"}" \
-            "${WEBHOOK_URL:-https://cicd.bssdev.cloud/post}"
+            "$WEBHOOK_URL"
 
   build-aab:
     name: Android AAB Build
@@ -337,13 +337,13 @@ jobs:
           GG_DRIVE_FOLDER_ID: ${{ vars.GG_DRIVE_FOLDER_ID }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
           FASTLANE_DISABLE_UPDATE_CHECK: "true"
-          ANDROID_CACHE_HIT: ${{ steps.cache-android.outputs.cache-hit }}
+          PREBUILD_CACHE_HIT: ${{ steps.cache-android.outputs.cache-hit }}
         run: bundle exec fastlane setup platform:android env:"$BUILD_ENV" kind:aab
 
       - name: Notify failure
         if: failure()
         env:
-          WEBHOOK_URL: ${{ vars.NOTIFICATION_WEBHOOK_URL }}
+          WEBHOOK_URL: ${{ secrets.NOTIFICATION_WEBHOOK_URL }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
         run: |
           ERROR_MSG="AAB build failed in job ${GITHUB_JOB} (run #${GITHUB_RUN_NUMBER})"
@@ -351,4 +351,4 @@ jobs:
           curl -X POST \
             -H 'Content-Type: application/json' \
             -d "{\"project\":\"${PROJECT_NAME}\",\"message\":\"${ERROR_MSG}\",\"status\":1,\"link\":\"${RUN_URL}\"}" \
-            "${WEBHOOK_URL:-https://cicd.bssdev.cloud/post}"
+            "$WEBHOOK_URL"
