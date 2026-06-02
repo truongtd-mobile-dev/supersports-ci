@@ -8,7 +8,8 @@ Actions tab → "Mobile Build Internal Testing (Android)" → Run workflow → c
 
 ## Source code
 
-Cloned at runtime from Gitea: `git.bssdev.cloud:2222/bssdev03/v567app`
+Cloned at runtime from a private Gitea instance — host and repo path live
+in the `PRIVATE_HOST` and `PRIVATE_REPO_PATH` repository secrets.
 
 ## Secrets / vars required
 
