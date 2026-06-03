@@ -23,6 +23,14 @@ on:
 permissions:
   contents: read
 
+# Serialize Android runs on the same env+kinds combo so two concurrent
+# triggers don't race the cache writeback or burn double minutes. We queue
+# rather than cancel because mid-build cancellation leaves Gradle daemons
+# and caches in inconsistent states.
+concurrency:
+  group: android-${{ github.event.inputs.environment }}-${{ github.event.inputs.kinds }}
+  cancel-in-progress: false
+
 jobs:
   build-apk:
     name: Android APK Build
@@ -95,11 +103,16 @@ jobs:
       - name: Cache Yarn dependencies
         uses: actions/cache@v4
         with:
-          path: |
-            real-code/node_modules
-            ~/.cache/yarn
-          key: yarn-${{ hashFiles('real-code/yarn.lock') }}
-          restore-keys: yarn-
+          # Cache only node_modules (~400MB) — yarn install --immutable verifies
+          # integrity against yarn.lock and no-ops on hit. Dropping ~/.cache/yarn
+          # frees ~1GB of cache budget for Gradle build cache below; cold-miss
+          # path falls back to network fetch (~30-60s extra), which is rare.
+          path: real-code/node_modules
+          # OS + Node major scoped so Linux runners (Android) and macOS runners
+          # (iOS) don't cross-restore each other's prebuilt native modules.
+          # Bump the v* prefix to force-invalidate when those change.
+          key: yarn-v1-${{ runner.os }}-node24-${{ hashFiles('real-code/yarn.lock') }}
+          restore-keys: yarn-v1-${{ runner.os }}-node24-
 
       - name: Install JS dependencies
         working-directory: real-code
@@ -114,8 +127,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: real-code/fastlane/vendor/bundle
-          key: gem-${{ hashFiles('real-code/fastlane/Gemfile.lock') }}
-          restore-keys: gem-
+          key: gem-v1-${{ runner.os }}-${{ hashFiles('real-code/fastlane/Gemfile.lock') }}
+          restore-keys: gem-v1-${{ runner.os }}-
 
       - name: Install fastlane gems
         working-directory: real-code/fastlane
@@ -130,22 +143,35 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Cache Gradle dependencies
+      - name: Cache Gradle (deps + build cache)
         uses: actions/cache@v4
         with:
+          # Includes the actual build-output cache (build-cache-*) — paired
+          # with `org.gradle.caching=true` injected by withAndroidGradleBuildCache.
+          # The project-local .gradle dir keeps the task graph / up-to-date
+          # state between runs, which is what makes warm Gradle truly warm.
+          # Gradle manages its own input-hash-based invalidation inside the
+          # cache, so the coarse outer key (yarn.lock) is fine — stale entries
+          # are simply ignored, never reused incorrectly.
           path: |
             ~/.gradle/caches/modules-2
+            ~/.gradle/caches/jars-*
+            ~/.gradle/caches/transforms-*
+            ~/.gradle/caches/build-cache-*
             ~/.gradle/wrapper
-          key: gradle-deps-${{ hashFiles('real-code/yarn.lock') }}
-          restore-keys: gradle-deps-
+            real-code/android/.gradle
+          key: gradle-v1-${{ runner.os }}-${{ hashFiles('real-code/yarn.lock') }}
+          restore-keys: gradle-v1-${{ runner.os }}-
 
       - name: Cache Android native build
         id: cache-android
         uses: actions/cache@v4
         with:
+          # iOS-only assets (launchscreen-ios) dropped from the hash so an
+          # iOS-side asset change does not invalidate Android prebuild output.
           path: real-code/android
-          key: android-build-${{ github.event.inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**') }}
-          restore-keys: android-build-${{ github.event.inputs.environment }}-
+          key: android-build-v1-${{ github.event.inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**') }}
+          restore-keys: android-build-v1-${{ github.event.inputs.environment }}-
 
       - name: Write Android keystore (LIVE only)
         if: github.event.inputs.environment == 'live'
@@ -261,11 +287,16 @@ jobs:
       - name: Cache Yarn dependencies
         uses: actions/cache@v4
         with:
-          path: |
-            real-code/node_modules
-            ~/.cache/yarn
-          key: yarn-${{ hashFiles('real-code/yarn.lock') }}
-          restore-keys: yarn-
+          # Cache only node_modules (~400MB) — yarn install --immutable verifies
+          # integrity against yarn.lock and no-ops on hit. Dropping ~/.cache/yarn
+          # frees ~1GB of cache budget for Gradle build cache below; cold-miss
+          # path falls back to network fetch (~30-60s extra), which is rare.
+          path: real-code/node_modules
+          # OS + Node major scoped so Linux runners (Android) and macOS runners
+          # (iOS) don't cross-restore each other's prebuilt native modules.
+          # Bump the v* prefix to force-invalidate when those change.
+          key: yarn-v1-${{ runner.os }}-node24-${{ hashFiles('real-code/yarn.lock') }}
+          restore-keys: yarn-v1-${{ runner.os }}-node24-
 
       - name: Install JS dependencies
         working-directory: real-code
@@ -280,8 +311,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: real-code/fastlane/vendor/bundle
-          key: gem-${{ hashFiles('real-code/fastlane/Gemfile.lock') }}
-          restore-keys: gem-
+          key: gem-v1-${{ runner.os }}-${{ hashFiles('real-code/fastlane/Gemfile.lock') }}
+          restore-keys: gem-v1-${{ runner.os }}-
 
       - name: Install fastlane gems
         working-directory: real-code/fastlane
@@ -296,22 +327,35 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Cache Gradle dependencies
+      - name: Cache Gradle (deps + build cache)
         uses: actions/cache@v4
         with:
+          # Includes the actual build-output cache (build-cache-*) — paired
+          # with `org.gradle.caching=true` injected by withAndroidGradleBuildCache.
+          # The project-local .gradle dir keeps the task graph / up-to-date
+          # state between runs, which is what makes warm Gradle truly warm.
+          # Gradle manages its own input-hash-based invalidation inside the
+          # cache, so the coarse outer key (yarn.lock) is fine — stale entries
+          # are simply ignored, never reused incorrectly.
           path: |
             ~/.gradle/caches/modules-2
+            ~/.gradle/caches/jars-*
+            ~/.gradle/caches/transforms-*
+            ~/.gradle/caches/build-cache-*
             ~/.gradle/wrapper
-          key: gradle-deps-${{ hashFiles('real-code/yarn.lock') }}
-          restore-keys: gradle-deps-
+            real-code/android/.gradle
+          key: gradle-v1-${{ runner.os }}-${{ hashFiles('real-code/yarn.lock') }}
+          restore-keys: gradle-v1-${{ runner.os }}-
 
       - name: Cache Android native build
         id: cache-android
         uses: actions/cache@v4
         with:
+          # iOS-only assets (launchscreen-ios) dropped from the hash so an
+          # iOS-side asset change does not invalidate Android prebuild output.
           path: real-code/android
-          key: android-build-${{ github.event.inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**') }}
-          restore-keys: android-build-${{ github.event.inputs.environment }}-
+          key: android-build-v1-${{ github.event.inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**') }}
+          restore-keys: android-build-v1-${{ github.event.inputs.environment }}-
 
       - name: Write Android keystore (LIVE only)
         if: github.event.inputs.environment == 'live'

@@ -136,11 +136,11 @@ jobs:
       - name: Cache Yarn dependencies
         uses: actions/cache@v4
         with:
-          path: |
-            real-code/node_modules
-            ~/.cache/yarn
-          key: yarn-${{ hashFiles('real-code/yarn.lock') }}
-          restore-keys: yarn-
+          # Match build-android.yml: cache only node_modules, OS-scoped key.
+          # See build-android.yml for the rationale.
+          path: real-code/node_modules
+          key: yarn-v1-${{ runner.os }}-node24-${{ hashFiles('real-code/yarn.lock') }}
+          restore-keys: yarn-v1-${{ runner.os }}-node24-
 
       - name: Install JS dependencies
         working-directory: real-code
@@ -155,8 +155,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: real-code/fastlane/vendor/bundle
-          key: gem-${{ hashFiles('real-code/fastlane/Gemfile.lock') }}
-          restore-keys: gem-
+          key: gem-v1-${{ runner.os }}-${{ hashFiles('real-code/fastlane/Gemfile.lock') }}
+          restore-keys: gem-v1-${{ runner.os }}-
 
       - name: Install fastlane gems
         working-directory: real-code/fastlane
@@ -169,16 +169,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/Library/Caches/CocoaPods
-          key: cocoapods-${{ hashFiles('real-code/yarn.lock') }}
-          restore-keys: cocoapods-
+          key: cocoapods-v1-${{ runner.os }}-${{ hashFiles('real-code/yarn.lock') }}
+          restore-keys: cocoapods-v1-${{ runner.os }}-
 
       - name: Cache iOS native build
         id: cache-ios
         uses: actions/cache@v4
         with:
+          # iOS key keeps launchscreen-ios in the hash (it drives
+          # withIosCustomLaunchScreen output); Android key drops it.
           path: real-code/ios
-          key: ios-build-${{ github.event.inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**') }}
-          restore-keys: ios-build-${{ github.event.inputs.environment }}-
+          key: ios-build-v1-${{ github.event.inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**') }}
+          restore-keys: ios-build-v1-${{ github.event.inputs.environment }}-
 
       - name: Create CI keychain
         run: |
