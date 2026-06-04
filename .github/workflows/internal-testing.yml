@@ -26,7 +26,7 @@ permissions:
 # Queue rather than cancel: a mid-build cancellation can leave Gradle daemons
 # and caches in an inconsistent state.
 concurrency:
-  group: internal-${{ github.event.inputs.environment }}
+  group: internal-${{ github.event.inputs.environment }}-${{ github.event.inputs.branch }}
   cancel-in-progress: false
 
 jobs:
