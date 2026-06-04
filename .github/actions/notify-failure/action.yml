@@ -1,0 +1,29 @@
+name: Notify build failure
+description: POST a failure notification (with a link back to this run) to the team webhook.
+
+inputs:
+  message:
+    description: Human-readable failure message.
+    required: true
+  webhook-url:
+    description: Notification webhook URL.
+    required: true
+  project-name:
+    description: Project name included in the payload.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Notify failure
+      shell: bash
+      env:
+        WEBHOOK_URL: ${{ inputs.webhook-url }}
+        PROJECT_NAME: ${{ inputs.project-name }}
+        ERROR_MSG: ${{ inputs.message }}
+      run: |
+        RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        curl -X POST \
+          -H 'Content-Type: application/json' \
+          -d "{\"project\":\"${PROJECT_NAME}\",\"message\":\"${ERROR_MSG}\",\"status\":1,\"link\":\"${RUN_URL}\"}" \
+          "$WEBHOOK_URL"

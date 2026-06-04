@@ -1,0 +1,28 @@
+name: Setup JS dependencies
+description: >-
+  Install Node 24, restore the node_modules cache, and run
+  `yarn install --immutable` in real-code/.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "24"
+
+    - name: Cache node_modules
+      uses: actions/cache@v4
+      with:
+        # Cache only node_modules — `yarn install --immutable` verifies integrity
+        # against yarn.lock and no-ops on hit. OS + Node major scoped so Linux
+        # (Android) and macOS (iOS) runners never cross-restore each other's
+        # prebuilt native modules. Bump the v* prefix to force-invalidate.
+        path: real-code/node_modules
+        key: yarn-v1-${{ runner.os }}-node24-${{ hashFiles('real-code/yarn.lock') }}
+        restore-keys: yarn-v1-${{ runner.os }}-node24-
+
+    - name: Install JS dependencies
+      shell: bash
+      working-directory: real-code
+      run: yarn install --immutable

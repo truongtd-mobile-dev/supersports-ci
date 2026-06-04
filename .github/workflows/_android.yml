@@ -1,0 +1,152 @@
+name: Android build (reusable)
+
+# Reusable Android build. Drives both the APK (internal testing) and AAB
+# (release) lanes — the only difference is the `kind` input, forwarded verbatim
+# to `fastlane setup ... kind:<kind>`. Callers: internal-testing.yml (apk),
+# aab.yml (aab). The release keystore is written only for the live environment.
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        description: Branch to build from Gitea.
+        required: true
+        type: string
+      environment:
+        description: staging or live.
+        required: true
+        type: string
+      kind:
+        description: apk or aab.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Android ${{ inputs.kind }} (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 90
+
+    env:
+      BUILD_BRANCH: ${{ inputs.branch }}
+      BUILD_ENV: ${{ inputs.environment }}
+      BUILD_KIND: ${{ inputs.kind }}
+      PRIVATE_HOST: ${{ secrets.PRIVATE_HOST }}
+      PRIVATE_REPO_PATH: ${{ secrets.PRIVATE_REPO_PATH }}
+
+    steps:
+      # Checks out THIS repo (the CI repo) so the local composite actions under
+      # .github/actions are on disk. The app source is cloned separately into
+      # real-code/ by the checkout-source action below.
+      - name: Checkout CI repo
+        uses: actions/checkout@v4
+
+      - name: Checkout app source
+        uses: ./.github/actions/checkout-source
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          private-host: ${{ secrets.PRIVATE_HOST }}
+          private-repo-path: ${{ secrets.PRIVATE_REPO_PATH }}
+          branch: ${{ inputs.branch }}
+
+      - name: Write app secrets
+        uses: ./.github/actions/write-app-secrets
+        with:
+          environment: ${{ inputs.environment }}
+          env-file: ${{ secrets.ENV_FILE }}
+          firebase-config: ${{ secrets.FIREBASE_GOOGLE_SERVICES_ANDROID }}
+          platform: android
+
+      - name: Setup JS
+        uses: ./.github/actions/setup-js
+
+      - name: Setup Ruby + fastlane
+        uses: ./.github/actions/setup-ruby-fastlane
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Cache Gradle (deps + build cache)
+        uses: actions/cache@v4
+        with:
+          # Includes the build-output cache (build-cache-*), paired with
+          # org.gradle.caching=true from withAndroidGradleBuildCache. The
+          # project-local .gradle dir keeps task-graph / up-to-date state between
+          # runs. Gradle invalidates by input hash internally, so the coarse
+          # outer key (yarn.lock) is safe — stale entries are ignored, never
+          # reused incorrectly.
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/caches/jars-*
+            ~/.gradle/caches/transforms-*
+            ~/.gradle/caches/build-cache-*
+            ~/.gradle/wrapper
+            real-code/android/.gradle
+          key: gradle-v1-${{ runner.os }}-${{ hashFiles('real-code/yarn.lock') }}
+          restore-keys: gradle-v1-${{ runner.os }}-
+
+      - name: Cache Android native build
+        id: cache-android
+        uses: actions/cache@v4
+        with:
+          # iOS-only assets (launchscreen-ios) are dropped from the hash so an
+          # iOS asset change does not invalidate Android prebuild output.
+          path: real-code/android
+          key: android-build-v1-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**') }}
+          restore-keys: android-build-v1-${{ inputs.environment }}-
+
+      - name: Write Android keystore (live only)
+        if: inputs.environment == 'live'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: real-code
+        run: |
+          mkdir -p credentials
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > credentials/thelook.jks
+          {
+            printf 'storeFile=credentials/thelook.jks\n'
+            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build Android via fastlane
+        working-directory: real-code
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/real-code/fastlane/Gemfile
+          DIAWI_API_TOKEN: ${{ secrets.DIAWI_API_TOKEN }}
+          DRIVER_KEY_JSON: ${{ secrets.DRIVER_KEY_JSON }}
+          GG_DRIVE_FOLDER_ID: ${{ vars.GG_DRIVE_FOLDER_ID }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          FASTLANE_DISABLE_UPDATE_CHECK: "true"
+          PREBUILD_CACHE_HIT: ${{ steps.cache-android.outputs.cache-hit }}
+        run: bundle exec fastlane setup platform:android env:"$BUILD_ENV" kind:"$BUILD_KIND"
+
+      - name: Upload build artifact (backup)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ inputs.kind }}-${{ inputs.environment }}-${{ github.run_id }}
+          path: |
+            real-code/android/app/build/outputs/apk/release/*.apk
+            real-code/android/app/build/outputs/bundle/release/*.aab
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Notify failure
+        if: failure()
+        uses: ./.github/actions/notify-failure
+        with:
+          message: "Android ${{ inputs.kind }} build failed (run #${{ github.run_number }})"
+          webhook-url: ${{ secrets.NOTIFICATION_WEBHOOK_URL }}
+          project-name: ${{ vars.PROJECT_NAME }}

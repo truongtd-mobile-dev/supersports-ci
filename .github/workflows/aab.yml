@@ -1,0 +1,31 @@
+name: AAB (Android, live)
+
+# Builds a Play Store Android App Bundle. AAB is release-only, so the
+# environment is fixed to live (with the release keystore). For an installable
+# APK use internal-testing.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to build from Gitea.
+        required: true
+        default: develop
+
+permissions:
+  contents: read
+
+# Queue rather than cancel: a mid-build cancellation can leave Gradle daemons
+# and caches in an inconsistent state.
+concurrency:
+  group: aab-live
+  cancel-in-progress: false
+
+jobs:
+  aab:
+    uses: ./.github/workflows/_android.yml
+    with:
+      branch: ${{ github.event.inputs.branch }}
+      environment: live
+      kind: aab
+    secrets: inherit

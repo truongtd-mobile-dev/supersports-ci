@@ -1,0 +1,39 @@
+name: TestFlight (iOS)
+
+# Builds and submits an iOS build to TestFlight for the chosen environment.
+# The staging bundle id (th.co.supersports.app-spf-staging) has its own App
+# Store Connect record, so staging TestFlight uploads are supported too.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to build from Gitea.
+        required: true
+        default: develop
+      environment:
+        description: Environment.
+        required: true
+        type: choice
+        default: staging
+        options:
+          - staging
+          - live
+
+permissions:
+  contents: read
+
+# Cancel an in-flight TestFlight run for the same env when a newer one starts —
+# only the latest upload matters, and there are no Gradle daemons to corrupt.
+concurrency:
+  group: testflight-${{ github.event.inputs.environment }}
+  cancel-in-progress: true
+
+jobs:
+  testflight:
+    uses: ./.github/workflows/_ios.yml
+    with:
+      branch: ${{ github.event.inputs.branch }}
+      environment: ${{ github.event.inputs.environment }}
+      kind: testflight
+    secrets: inherit

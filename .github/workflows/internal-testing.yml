@@ -1,0 +1,47 @@
+name: Internal Testing (iOS adhoc + Android APK)
+
+# One dispatch builds both platforms for the chosen environment in parallel:
+# an ad-hoc IPA (iOS) and a release APK (Android). For TestFlight use
+# testflight.yml; for a Play Store AAB use aab.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to build from Gitea.
+        required: true
+        default: develop
+      environment:
+        description: Environment.
+        required: true
+        type: choice
+        default: staging
+        options:
+          - staging
+          - live
+
+permissions:
+  contents: read
+
+# Queue rather than cancel: a mid-build cancellation can leave Gradle daemons
+# and caches in an inconsistent state.
+concurrency:
+  group: internal-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  ios:
+    uses: ./.github/workflows/_ios.yml
+    with:
+      branch: ${{ github.event.inputs.branch }}
+      environment: ${{ github.event.inputs.environment }}
+      kind: adhoc
+    secrets: inherit
+
+  android:
+    uses: ./.github/workflows/_android.yml
+    with:
+      branch: ${{ github.event.inputs.branch }}
+      environment: ${{ github.event.inputs.environment }}
+      kind: apk
+    secrets: inherit

@@ -1,0 +1,27 @@
+name: Setup Ruby + fastlane
+description: >-
+  Install Ruby 3.2.6, restore the bundler cache, and install the fastlane gems
+  in real-code/fastlane.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Ruby & Bundler
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: "3.2.6"
+
+    - name: Cache Ruby gems
+      uses: actions/cache@v4
+      with:
+        path: real-code/fastlane/vendor/bundle
+        key: gem-v1-${{ runner.os }}-${{ hashFiles('real-code/fastlane/Gemfile.lock') }}
+        restore-keys: gem-v1-${{ runner.os }}-
+
+    - name: Install fastlane gems
+      shell: bash
+      working-directory: real-code/fastlane
+      run: |
+        gem install bundler
+        bundle config set path 'vendor/bundle'
+        bundle install --jobs 4 --retry 3

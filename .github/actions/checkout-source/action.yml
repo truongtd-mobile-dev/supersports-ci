@@ -1,0 +1,72 @@
+name: Checkout source from Gitea
+description: >-
+  Trust the private Gitea host (and the fastlane Match host when given) over
+  SSH, then shallow-clone the app source into real-code/.
+
+inputs:
+  ssh-private-key:
+    description: SSH private key with read access to the Gitea repo.
+    required: true
+  private-host:
+    description: Gitea host without port (e.g. git.example.com).
+    required: true
+  private-repo-path:
+    description: Repo path on Gitea, e.g. org/repo.git.
+    required: true
+  branch:
+    description: Branch to clone.
+    required: true
+  match-git-url:
+    description: >-
+      fastlane Match repo URL. When set and on a different host than the Gitea
+      repo, that host is added to known_hosts so `match` can clone over SSH.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Trust SSH hosts
+      shell: bash
+      env:
+        SSH_PRIVATE_KEY: ${{ inputs.ssh-private-key }}
+        PRIVATE_HOST: ${{ inputs.private-host }}
+        MATCH_GIT_URL: ${{ inputs.match-git-url }}
+      run: |
+        mkdir -p ~/.ssh
+        printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan -p 2222 "$PRIVATE_HOST" >> ~/.ssh/known_hosts
+
+        # Trust the Match repo host too when it lives on a different server.
+        if [ -n "$MATCH_GIT_URL" ]; then
+          MATCH_HOST=$(printf '%s' "$MATCH_GIT_URL" | sed -E 's#^(ssh://)?git@([^:/]+).*#\2#')
+          MATCH_PORT=$(printf '%s' "$MATCH_GIT_URL" | grep -oE ':[0-9]+' | head -1 | tr -d ':' || true)
+          if [ "$MATCH_HOST" != "$PRIVATE_HOST" ]; then
+            ssh-keyscan -p "${MATCH_PORT:-22}" "$MATCH_HOST" >> ~/.ssh/known_hosts
+          fi
+        fi
+
+        # Host pre-scanned above, so strict checking adds MITM protection
+        # without breaking the clone.
+        {
+          printf 'Host %s\n' "$PRIVATE_HOST"
+          printf '  HostName %s\n' "$PRIVATE_HOST"
+          printf '  Port 2222\n'
+          printf '  IdentityFile ~/.ssh/id_ed25519\n'
+          printf '  StrictHostKeyChecking yes\n'
+        } > ~/.ssh/config
+        chmod 600 ~/.ssh/config
+
+    - name: Clone source
+      shell: bash
+      env:
+        PRIVATE_HOST: ${{ inputs.private-host }}
+        PRIVATE_REPO_PATH: ${{ inputs.private-repo-path }}
+        BUILD_BRANCH: ${{ inputs.branch }}
+      run: |
+        git clone --depth 1 \
+          --branch "$BUILD_BRANCH" \
+          --single-branch \
+          "ssh://git@${PRIVATE_HOST}:2222/${PRIVATE_REPO_PATH}" \
+          real-code
