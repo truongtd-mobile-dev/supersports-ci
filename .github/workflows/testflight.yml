@@ -26,7 +26,7 @@ permissions:
 # Cancel an in-flight TestFlight run for the same env when a newer one starts —
 # only the latest upload matters, and there are no Gradle daemons to corrupt.
 concurrency:
-  group: testflight-${{ github.event.inputs.environment }}
+  group: testflight-${{ github.event.inputs.environment }}-${{ github.event.inputs.branch }}
   cancel-in-progress: true
 
 jobs:
