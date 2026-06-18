@@ -58,8 +58,6 @@ jobs:
         with:
           environment: ${{ inputs.environment }}
           env-file: ${{ secrets.ENV_FILE }}
-          firebase-config: ${{ secrets.FIREBASE_GOOGLE_SERVICES_ANDROID }}
-          platform: android
 
       - name: Setup JS
         uses: ./.github/actions/setup-js
@@ -99,7 +97,7 @@ jobs:
           # iOS-only assets (launchscreen-ios) are dropped from the hash so an
           # iOS asset change does not invalidate Android prebuild output.
           path: real-code/android
-          key: android-build-v1-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**') }}
+          key: android-build-v1-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/firebase/**') }}
           restore-keys: android-build-v1-${{ inputs.environment }}-
 
       - name: Write Android keystore (live only)

@@ -35,7 +35,7 @@ aab.yml              ───┘         └── composite actions (see below
 
 Composite actions (.github/actions/):
   checkout-source      — SSH trust + shallow clone from Gitea
-  write-app-secrets    — .env file + Firebase config (platform-aware)
+  write-app-secrets    — .env file (Firebase config is committed in the app repo)
   setup-js             — Node 24, node_modules cache, yarn install
   setup-ruby-fastlane  — Ruby 3.2.6, gem cache, bundle install
   notify-failure       — POST failure notification to webhook
@@ -67,7 +67,7 @@ Bump the `v*` prefix in the relevant workflow to force a cold rebuild.
 | `android-build-v1` — `android/` | config hash + environment | per-env | ~300 MB |
 
 **Config hash** covers: `app.config.js`, `app.json`, `plugins/**`, `yarn.lock`,
-`assets/logo-app/**`, `assets/braze/**`, `assets/checkout/**`
+`assets/logo-app/**`, `assets/braze/**`, `assets/checkout/**`, `firebase/**`
 (+ `assets/launchscreen-ios/**` for iOS only).
 
 `ios/DerivedData` is stored inside `ios/` so it is captured by `ios-build-v2`.
@@ -95,8 +95,6 @@ and set `gym(clean:)` correctly on cache hits.
 | Name | Used by | Description |
 |---|---|---|
 | `ENV_FILE` | both | Contents of `.env.stg` / `.env.live` |
-| `FIREBASE_GOOGLE_SERVICES_IOS` | iOS | Base64-encoded `GoogleService-Info.plist` |
-| `FIREBASE_GOOGLE_SERVICES_ANDROID` | Android | Base64-encoded `google-services.json` |
 | `MATCH_GIT_URL` | iOS | SSH URL of the fastlane Match certificates repo |
 | `MATCH_PASSWORD` | iOS | Passphrase for the Match repo |
 | `TEAM_ID` | iOS | Apple Developer Team ID |

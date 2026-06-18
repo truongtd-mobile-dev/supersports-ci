@@ -1,8 +1,9 @@
 name: Write app secrets
 description: >-
-  Materialize the per-environment .env file and the Firebase config
-  (GoogleService-Info.plist for iOS, google-services.json for Android) into the
-  cloned source at real-code/.
+  Materialize the per-environment .env file into the cloned source at
+  real-code/. Firebase config (GoogleService-Info.plist / google-services.json)
+  is committed in the app repo and arrives with the checkout — no longer
+  written here.
 
 inputs:
   environment:
@@ -10,14 +11,6 @@ inputs:
     required: true
   env-file:
     description: Contents of the .env file for the chosen environment.
-    required: true
-  firebase-config:
-    description: >-
-      Base64-encoded Firebase config — GoogleService-Info.plist for iOS,
-      google-services.json for Android.
-    required: true
-  platform:
-    description: ios or android — selects the Firebase filename.
     required: true
 
 runs:
@@ -35,24 +28,3 @@ runs:
         else
           printf '%s\n' "$ENV_FILE_CONTENT" > .env.live
         fi
-
-    - name: Write Firebase config
-      shell: bash
-      working-directory: real-code
-      env:
-        BUILD_ENV: ${{ inputs.environment }}
-        PLATFORM: ${{ inputs.platform }}
-        FIREBASE_CONFIG_B64: ${{ inputs.firebase-config }}
-      run: |
-        if [ "$PLATFORM" = "ios" ]; then
-          filename="GoogleService-Info.plist"
-        else
-          filename="google-services.json"
-        fi
-        if [ "$BUILD_ENV" = "staging" ]; then
-          dir="firebase/staging"
-        else
-          dir="firebase/production"
-        fi
-        mkdir -p "$dir"
-        printf '%s' "$FIREBASE_CONFIG_B64" | base64 --decode > "$dir/$filename"

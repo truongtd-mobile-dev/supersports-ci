@@ -74,8 +74,6 @@ jobs:
         with:
           environment: ${{ inputs.environment }}
           env-file: ${{ secrets.ENV_FILE }}
-          firebase-config: ${{ secrets.FIREBASE_GOOGLE_SERVICES_IOS }}
-          platform: ios
 
       - name: Write ASC API key
         if: inputs.kind == 'testflight'
@@ -108,7 +106,7 @@ jobs:
           # in this cache, gym(clean: false) on a warm cache still triggers a cold
           # compile. Bump the v* prefix to force-invalidate.
           path: real-code/ios
-          key: ios-build-v2-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**') }}
+          key: ios-build-v2-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**', 'real-code/firebase/**') }}
           restore-keys: ios-build-v2-${{ inputs.environment }}-
 
       - name: Create CI keychain
