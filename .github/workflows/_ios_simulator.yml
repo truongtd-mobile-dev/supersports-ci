@@ -1,0 +1,111 @@
+name: iOS simulator build (reusable)
+
+# Reusable iOS *simulator* build for Maestro. Produces a Release-iphonesimulator
+# .app (zipped), NOT an IPA — so it deliberately skips code signing, fastlane
+# match, and the CI keychain that _ios.yml needs. The Braze REST layer is
+# disabled by the simulator_test lane itself (DISABLE_BRAZE). Caller: maestro.yml.
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        description: Branch to build from Gitea.
+        required: true
+        type: string
+      environment:
+        description: staging or live.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: iOS simulator (${{ inputs.environment }})
+    runs-on: macos-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 90
+
+    env:
+      BUILD_BRANCH: ${{ inputs.branch }}
+      BUILD_ENV: ${{ inputs.environment }}
+      PRIVATE_HOST: ${{ secrets.PRIVATE_HOST }}
+      PRIVATE_REPO_PATH: ${{ secrets.PRIVATE_REPO_PATH }}
+
+    steps:
+      - name: Checkout CI repo
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      # No match-git-url: a simulator build needs no signing certificates.
+      - name: Checkout app source
+        uses: ./.github/actions/checkout-source
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          private-host: ${{ secrets.PRIVATE_HOST }}
+          private-repo-path: ${{ secrets.PRIVATE_REPO_PATH }}
+          branch: ${{ inputs.branch }}
+
+      - name: Write app secrets
+        uses: ./.github/actions/write-app-secrets
+        with:
+          environment: ${{ inputs.environment }}
+          env-file: ${{ secrets.ENV_FILE }}
+
+      - name: Setup JS
+        uses: ./.github/actions/setup-js
+
+      - name: Setup Ruby + fastlane
+        uses: ./.github/actions/setup-ruby-fastlane
+
+      - name: Cache CocoaPods downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: cocoapods-v1-${{ runner.os }}-${{ hashFiles('real-code/yarn.lock') }}
+          restore-keys: cocoapods-v1-${{ runner.os }}-
+
+      # Separate cache key from the device/adhoc build (ios-build-v2): a simulator
+      # build writes Release-iphonesimulator products into DerivedData, kept
+      # distinct from the device Release-iphoneos tree so neither pollutes the
+      # other. ios/DerivedData lives inside ios/ so it is captured here.
+      - name: Cache iOS simulator build
+        id: cache-ios-sim
+        uses: actions/cache@v4
+        with:
+          path: real-code/ios
+          key: ios-sim-build-v1-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**', 'real-code/firebase/**') }}
+          restore-keys: ios-sim-build-v1-${{ inputs.environment }}-
+
+      - name: Build iOS simulator via fastlane
+        working-directory: real-code
+        env:
+          BUNDLE_GEMFILE: ${{ github.workspace }}/real-code/fastlane/Gemfile
+          DRIVER_KEY_JSON: ${{ secrets.DRIVER_KEY_JSON }}
+          GG_DRIVE_FOLDER_ID: ${{ vars.GG_DRIVE_FOLDER_ID }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          FASTLANE_DISABLE_UPDATE_CHECK: "true"
+          PREBUILD_CACHE_HIT: ${{ steps.cache-ios-sim.outputs.cache-hit }}
+        run: bundle exec fastlane setup platform:ios env:"$BUILD_ENV" kind:maestro
+
+      - name: Upload .app.zip artifact (backup)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-sim-${{ inputs.environment }}-${{ github.run_id }}
+          path: real-code/ios/DerivedData/Build/Products/Release-iphonesimulator/*.app.zip
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Notify failure
+        if: failure()
+        uses: ./.github/actions/notify-failure
+        with:
+          message: "iOS simulator (maestro) build failed (run #${{ github.run_number }})"
+          webhook-url: ${{ secrets.NOTIFICATION_WEBHOOK_URL }}
+          project-name: ${{ vars.PROJECT_NAME }}

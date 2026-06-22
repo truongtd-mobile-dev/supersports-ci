@@ -1,0 +1,40 @@
+name: Maestro test build (iOS simulator .app + Android APK)
+
+# One dispatch builds both Maestro artifacts for live in parallel: an iOS
+# simulator .app (zipped) and an Android Release APK, both with the Braze REST
+# layer disabled (DISABLE_BRAZE, set by the simulator_test / apk_test lanes).
+# Artifacts upload to Drive under PROJECT_NAME/maestro/<DDMMYYYY>. Always live —
+# this is a QA automation build, not a release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to build from Gitea.
+        required: true
+        default: develop
+
+permissions:
+  contents: read
+
+# Queue rather than cancel: a mid-build cancellation can leave Gradle daemons
+# and caches in an inconsistent state.
+concurrency:
+  group: maestro-${{ github.event.inputs.branch }}
+  cancel-in-progress: false
+
+jobs:
+  ios:
+    uses: ./.github/workflows/_ios_simulator.yml
+    with:
+      branch: ${{ github.event.inputs.branch }}
+      environment: live
+    secrets: inherit
+
+  android:
+    uses: ./.github/workflows/_android.yml
+    with:
+      branch: ${{ github.event.inputs.branch }}
+      environment: live
+      kind: maestro
+    secrets: inherit
