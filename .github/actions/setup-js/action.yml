@@ -19,7 +19,7 @@ runs:
         # (Android) and macOS (iOS) runners never cross-restore each other's
         # prebuilt native modules. Bump the v* prefix to force-invalidate.
         path: real-code/node_modules
-        key: yarn-v1-${{ runner.os }}-node24-${{ hashFiles('real-code/yarn.lock') }}
+        key: yarn-v1-${{ runner.os }}-node24-${{ hashFiles('real-code/yarn.lock', 'real-code/patches/**') }}
         restore-keys: yarn-v1-${{ runner.os }}-node24-
 
     - name: Install JS dependencies
