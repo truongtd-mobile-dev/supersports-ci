@@ -37,10 +37,12 @@ jobs:
       - name: Checkout CI repo
         uses: actions/checkout@v4
 
+      # Same single-source expression as _ios.yml — bump the XCODE_VERSION
+      # repo variable to move every workflow at once.
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26.3"
+          xcode-version: "${{ vars.XCODE_VERSION || '26.3' }}"
 
       # No match-git-url: a simulator build needs no signing certificates.
       - name: Checkout app source
@@ -70,17 +72,20 @@ jobs:
           key: cocoapods-v1-${{ runner.os }}-${{ hashFiles('real-code/yarn.lock') }}
           restore-keys: cocoapods-v1-${{ runner.os }}-
 
-      # Separate cache key from the device/adhoc build (ios-build-v2): a simulator
-      # build writes Release-iphonesimulator products into DerivedData, kept
-      # distinct from the device Release-iphoneos tree so neither pollutes the
-      # other. ios/DerivedData lives inside ios/ so it is captured here.
+      # Simulator builds keep the ios/ tree-cache model (unlike device builds,
+      # which moved to the CAS compilation cache): the tree includes an in-tree
+      # ios/DerivedData whose own CAS survives the non-clean prebuild on exact
+      # hits. patches/** is in the hash because patch-package rewrites native
+      # sources — a new patch must invalidate this tree. No restore-keys on
+      # purpose: a partial restore reports PREBUILD_CACHE_HIT=false, so
+      # `expo prebuild --clean` wipes whatever was just downloaded — only
+      # exact hits are worth restoring.
       - name: Cache iOS simulator build
         id: cache-ios-sim
         uses: actions/cache@v4
         with:
           path: real-code/ios
-          key: ios-sim-build-v1-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**', 'real-code/firebase/**', 'real-code/.env.stg', 'real-code/.env.live') }}
-          restore-keys: ios-sim-build-v1-${{ inputs.environment }}-
+          key: ios-sim-build-v2-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/patches/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**', 'real-code/firebase/**', 'real-code/.env.stg', 'real-code/.env.live') }}
 
       - name: Build iOS simulator via fastlane
         working-directory: real-code

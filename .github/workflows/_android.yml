@@ -75,20 +75,25 @@ jobs:
         uses: actions/cache@v4
         with:
           # Includes the build-output cache (build-cache-*), paired with
-          # org.gradle.caching=true from withAndroidGradleBuildCache. The
-          # project-local .gradle dir keeps task-graph / up-to-date state between
-          # runs. Gradle invalidates by input hash internally, so the coarse
-          # outer key (yarn.lock) is safe — stale entries are ignored, never
-          # reused incorrectly.
+          # org.gradle.caching=true from withAndroidGradleBuildCache. Gradle
+          # invalidates by input hash internally, so the coarse outer key
+          # (yarn.lock) is safe — stale entries are ignored, never reused
+          # incorrectly. The project-local android/.gradle dir is deliberately
+          # NOT cached here: on cache-miss builds `expo prebuild --clean`
+          # deletes it right after restore, and on exact hits it already
+          # arrives inside the android-build tree cache.
           path: |
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/jars-*
             ~/.gradle/caches/transforms-*
             ~/.gradle/caches/build-cache-*
             ~/.gradle/wrapper
-            real-code/android/.gradle
-          key: gradle-v1-${{ runner.os }}-${{ hashFiles('real-code/yarn.lock') }}
-          restore-keys: gradle-v1-${{ runner.os }}-
+          # v2: dropped real-code/android/.gradle from path. The bump is
+          # required — an exact hit on an old v1 entry would keep restoring the
+          # old tarball (restore ignores the current path list) and never save
+          # the new layout until yarn.lock happened to change.
+          key: gradle-v2-${{ runner.os }}-${{ hashFiles('real-code/yarn.lock') }}
+          restore-keys: gradle-v2-${{ runner.os }}-
 
       - name: Cache Android native build
         id: cache-android
@@ -96,9 +101,13 @@ jobs:
         with:
           # iOS-only assets (launchscreen-ios) are dropped from the hash so an
           # iOS asset change does not invalidate Android prebuild output.
+          # patches/** is in the hash because patch-package rewrites native
+          # sources inside node_modules — a new patch must invalidate this tree.
+          # No restore-keys on purpose: a partial restore always reports
+          # PREBUILD_CACHE_HIT=false, so `expo prebuild --clean` wipes whatever
+          # was just downloaded — an exact hit is the only restore worth paying for.
           path: real-code/android
-          key: android-build-v1-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/firebase/**', 'real-code/.env.stg', 'real-code/.env.live') }}
-          restore-keys: android-build-v1-${{ inputs.environment }}-
+          key: android-build-v2-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/patches/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/firebase/**', 'real-code/.env.stg', 'real-code/.env.live') }}
 
       - name: Write Android keystore (live only)
         if: inputs.environment == 'live'

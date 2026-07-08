@@ -63,18 +63,37 @@ Bump the `v*` prefix in the relevant workflow to force a cold rebuild.
 | `gem-v1` — fastlane gems | `Gemfile.lock` + OS | per-platform | ~33 MB |
 | `cocoapods-v1` — pod downloads | `yarn.lock` + OS | iOS only | ~200 MB |
 | `gradle-v1` — deps + build cache | `yarn.lock` + OS | Android only | ~500 MB |
-| `ios-build-v2` — `ios/` + DerivedData | config hash + environment | per-env | ~1.4 GB |
-| `android-build-v1` — `android/` | config hash + environment | per-env | ~300 MB |
+| `cas-ios-v1` — Xcode compilation cache (LLVM CAS) | Xcode version + run id (rolling) | iOS device builds | grows over time |
+| `android-build-v2` — `android/` | config hash + environment | per-env | ~300 MB |
 
-**Config hash** covers: `app.config.js`, `app.json`, `plugins/**`, `yarn.lock`,
-`assets/logo-app/**`, `assets/braze/**`, `assets/checkout/**`, `firebase/**`
-(+ `assets/launchscreen-ios/**` for iOS only).
+**Config hash** covers: `app.config.js`, `app.json`, `plugins/**`, `patches/**`,
+`yarn.lock`, `assets/logo-app/**`, `assets/braze/**`, `assets/checkout/**`,
+`firebase/**`, `.env.stg`, `.env.live` (+ `assets/launchscreen-ios/**` for the
+iOS simulator tree cache `ios-sim-build-v2`).
 
-`ios/DerivedData` is stored inside `ios/` so it is captured by `ios-build-v2`.
-Without this, `gym(clean: false)` on a warm cache still cold-compiles.
+iOS device builds no longer cache the `ios/` tree. That cache was net-negative:
+partial restores were deleted by `expo prebuild --clean`, and on exact hits the
+prebuild rewrite bumped mtimes so xcodebuild recompiled anyway. Instead the
+Fastfile enables Xcode compilation caching (`COMPILATION_CACHE_ENABLE_CACHING`)
+and `_ios.yml` persists `CompilationCache.noindex` with a rolling key — it is
+content-addressed, so it survives prebuild --clean and config changes.
+Reference: v560ns cut native compile ~21m → ~6m with the same setup.
 
-`PREBUILD_CACHE_HIT` is passed to Fastlane so it can skip `expo prebuild --clean`
-and set `gym(clean:)` correctly on cache hits.
+`android-build-v2` and `ios-sim-build-v2` have no `restore-keys` on purpose: a
+partial restore reports `PREBUILD_CACHE_HIT=false`, so `expo prebuild --clean`
+wipes what was just downloaded — only exact hits are worth restoring.
+`PREBUILD_CACHE_HIT` is still passed to Fastlane on Android and on the Maestro
+simulator build (which keeps its own `ios/` tree cache in `_ios_simulator.yml`)
+to skip `--clean` on exact hits.
+
+The Xcode version is defined once by the `XCODE_VERSION` repo variable
+(Settings → Actions → Variables), falling back to `26.3`. The CAS cache key and
+both Select Xcode steps share that expression, so bumping Xcode cannot silently
+desync the cache key from the toolchain. The app repo's Fastfile pins the CAS
+store location with `COMPILATION_CACHE_CAS_PATH` to the exact path `_ios.yml`
+caches, and a post-build step warns when the store was not populated —
+**merge Fastfile changes and workflow changes together**; a version mismatch
+degrades to permanently-cold (but green) builds.
 
 ---
 

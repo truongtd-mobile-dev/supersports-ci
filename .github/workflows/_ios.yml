@@ -55,10 +55,14 @@ jobs:
             exit 1
           fi
 
+      # Single source for the Xcode version: the XCODE_VERSION repo variable
+      # (Settings -> Actions -> Variables), falling back to 26.3. The CAS cache
+      # key below reuses the same expression — a version bump in one place
+      # rolls both, so the key can never silently drift from the toolchain.
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26.3"
+          xcode-version: "${{ vars.XCODE_VERSION || '26.3' }}"
 
       - name: Checkout app source
         uses: ./.github/actions/checkout-source
@@ -97,17 +101,24 @@ jobs:
           key: cocoapods-v1-${{ runner.os }}-${{ hashFiles('real-code/yarn.lock') }}
           restore-keys: cocoapods-v1-${{ runner.os }}-
 
-      - name: Cache iOS native build
-        id: cache-ios
+      - name: Cache Xcode compilation cache (LLVM CAS)
         uses: actions/cache@v4
         with:
-          # The cached `ios/` tree must include ios/DerivedData — the Fastfile
-          # points xcodebuild's derived data there explicitly. Without DerivedData
-          # in this cache, gym(clean: false) on a warm cache still triggers a cold
-          # compile. Bump the v* prefix to force-invalidate.
-          path: real-code/ios
-          key: ios-build-v2-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**', 'real-code/firebase/**', 'real-code/.env.stg', 'real-code/.env.live') }}
-          restore-keys: ios-build-v2-${{ inputs.environment }}-
+          # Content-addressed compile cache, enabled by
+          # COMPILATION_CACHE_ENABLE_CACHING=YES in the Fastfile gyms. Replaces
+          # the old `real-code/ios` tree cache (ios-build-v*): that tree was
+          # deleted by `expo prebuild --clean` on every partial restore, and on
+          # exact hits the prebuild rewrite bumped mtimes so xcodebuild
+          # recompiled anyway. CAS keys on file *content*, so it survives
+          # prebuild, config changes, and `clean` — v560ns cut native compile
+          # ~21m -> ~6m with this exact setup.
+          # Rolling key: run_id never matches, so restore-keys always pulls the
+          # most recent cache and a fresh one is saved after every run. The
+          # Xcode version comes from the same expression as the Select Xcode
+          # step, so key and toolchain can never drift apart.
+          path: ~/Library/Developer/Xcode/DerivedData/CompilationCache.noindex
+          key: cas-ios-v1-xcode${{ vars.XCODE_VERSION || '26.3' }}-${{ github.run_id }}
+          restore-keys: cas-ios-v1-xcode${{ vars.XCODE_VERSION || '26.3' }}-
 
       - name: Create CI keychain
         run: |
@@ -143,8 +154,19 @@ jobs:
           TEAM_ID: ${{ secrets.TEAM_ID }}
           MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          PREBUILD_CACHE_HIT: ${{ steps.cache-ios.outputs.cache-hit }}
         run: bundle exec fastlane setup platform:ios env:"$BUILD_ENV" kind:"$BUILD_KIND"
+
+      # The failure mode of a mispointed CAS store is SILENT (builds succeed,
+      # just permanently cold at ~3x the time). Surface it as a run annotation.
+      - name: Verify compilation cache populated
+        if: success()
+        run: |
+          CAS_DIR="$HOME/Library/Developer/Xcode/DerivedData/CompilationCache.noindex"
+          if [ -d "$CAS_DIR" ]; then
+            echo "Compilation cache size: $(du -sh "$CAS_DIR" | cut -f1)"
+          else
+            echo "::warning::CompilationCache.noindex was not created — compilation caching is NOT active. The app repo's Fastfile gyms must pass COMPILATION_CACHE_ENABLE_CACHING=YES plus COMPILATION_CACHE_CAS_PATH pointing at this exact path (helper compilation_cache_cas_path_xcarg)."
+          fi
 
       - name: Upload IPA artifact (backup)
         if: success()
