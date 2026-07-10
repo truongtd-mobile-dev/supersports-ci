@@ -1,0 +1,82 @@
+name: Setup app env
+description: >-
+  Materialize the per-environment .env file (.env.stg / .env.live) into
+  real-code/. Preferred source: Passbolt — the same source of truth local devs
+  use via `yarn passbolt:stg|live` (scripts/passbolt-env.ts in the app repo).
+  When the Passbolt secrets are not configured yet, falls back to the legacy
+  ENV_FILE secret so the migration can roll out without breaking builds.
+  Requires node_modules (run the setup-js action first) — the fetch reuses the
+  app repo's tsx script, so local and CI can never drift.
+
+inputs:
+  environment:
+    description: staging or live.
+    required: true
+  passbolt-base-url:
+    description: Passbolt server URL. Empty = use the ENV_FILE fallback.
+    required: false
+    default: ""
+  passbolt-user-id:
+    description: Passbolt user id (uuid) owning the env resources.
+    required: false
+    default: ""
+  passbolt-private-key:
+    description: Armored OpenPGP private key of the Passbolt user.
+    required: false
+    default: ""
+  passbolt-passphrase:
+    description: Base64-encoded passphrase of the private key (same encoding as local .env.passbolt).
+    required: false
+    default: ""
+  passbolt-resource-id-staging:
+    description: Passbolt resource id holding the staging .env content.
+    required: false
+    default: ""
+  passbolt-resource-id-production:
+    description: Passbolt resource id holding the production .env content.
+    required: false
+    default: ""
+  env-file:
+    description: Legacy fallback — raw contents of the .env file for the chosen environment.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch env from Passbolt
+      if: inputs.passbolt-base-url != ''
+      shell: bash
+      working-directory: real-code
+      env:
+        BUILD_ENV: ${{ inputs.environment }}
+        PASSBOLT_BASE_URL: ${{ inputs.passbolt-base-url }}
+        PASSBOLT_USER_ID: ${{ inputs.passbolt-user-id }}
+        PASSBOLT_PRIVATE_KEY_ARMORED: ${{ inputs.passbolt-private-key }}
+        PASSBOLT_PASSPHRASE: ${{ inputs.passbolt-passphrase }}
+        PASSBOLT_RESOURCE_ID_STAGING: ${{ inputs.passbolt-resource-id-staging }}
+        PASSBOLT_RESOURCE_ID_PRODUCTION: ${{ inputs.passbolt-resource-id-production }}
+      run: |
+        # Workflows say staging|live; the script says staging|production.
+        if [ "$BUILD_ENV" = "staging" ]; then ENV_NAME=staging; else ENV_NAME=production; fi
+        yarn tsx scripts/passbolt-env.ts "$ENV_NAME"
+        echo "Env for $BUILD_ENV fetched from Passbolt."
+
+    - name: Write env from legacy ENV_FILE secret
+      if: inputs.passbolt-base-url == ''
+      shell: bash
+      working-directory: real-code
+      env:
+        BUILD_ENV: ${{ inputs.environment }}
+        ENV_FILE_CONTENT: ${{ inputs.env-file }}
+      run: |
+        if [ -z "$ENV_FILE_CONTENT" ]; then
+          echo "::error::Neither Passbolt secrets nor ENV_FILE are configured — cannot materialize .env."
+          exit 1
+        fi
+        echo "::warning::Using legacy ENV_FILE secret. Configure the PASSBOLT_* secrets to make Passbolt the single source of truth (see README, Secrets section)."
+        if [ "$BUILD_ENV" = "staging" ]; then
+          printf '%s\n' "$ENV_FILE_CONTENT" > .env.stg
+        else
+          printf '%s\n' "$ENV_FILE_CONTENT" > .env.live
+        fi

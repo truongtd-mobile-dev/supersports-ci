@@ -35,7 +35,8 @@ aab.yml              ───┘         └── composite actions (see below
 
 Composite actions (.github/actions/):
   checkout-source      — SSH trust + shallow clone from Gitea
-  write-app-secrets    — .env file (Firebase config is committed in the app repo)
+  setup-env            — .env from Passbolt (fallback: legacy ENV_FILE secret);
+                         Firebase config is committed in the app repo
   setup-js             — Node 24, node_modules cache, yarn install
   setup-ruby-fastlane  — Ruby 3.2.6, gem cache, bundle install
   notify-failure       — POST failure notification to webhook
@@ -108,12 +109,18 @@ degrades to permanently-cold (but green) builds.
 | `PRIVATE_REPO_PATH` | Repo path on Gitea (e.g. `org/repo.git`) |
 | `NOTIFICATION_WEBHOOK_URL` | Webhook URL for build failure notifications |
 | `DRIVER_KEY_JSON` | Google service-account JSON for Drive artifact uploads |
+| `PASSBOLT_BASE_URL` | Passbolt server URL — when set, `.env` is fetched from Passbolt (single source of truth with local dev) |
+| `PASSBOLT_USER_ID` | Passbolt user id (uuid) owning the env resources |
+| `PASSBOLT_PRIVATE_KEY_ARMORED` | Armored OpenPGP private key of that user |
+| `PASSBOLT_PASSPHRASE` | Base64-encoded key passphrase (same encoding as local `.env.passbolt`) |
+| `PASSBOLT_RESOURCE_ID_STAGING` | Resource id holding the staging `.env` content |
+| `PASSBOLT_RESOURCE_ID_PRODUCTION` | Resource id holding the production `.env` content |
 
 ### Environment-scoped — `staging` and `live`
 
 | Name | Used by | Description |
 |---|---|---|
-| `ENV_FILE` | both | Contents of `.env.stg` / `.env.live` |
+| `ENV_FILE` | both | **Legacy fallback** — contents of `.env.stg` / `.env.live`. Only used when `PASSBOLT_BASE_URL` is unset; the setup-env action emits a warning on this path. Delete once Passbolt secrets are configured |
 | `MATCH_GIT_URL` | iOS | SSH URL of the fastlane Match certificates repo |
 | `MATCH_PASSWORD` | iOS | Passphrase for the Match repo |
 | `TEAM_ID` | iOS | Apple Developer Team ID |
