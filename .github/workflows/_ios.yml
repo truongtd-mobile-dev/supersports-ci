@@ -98,7 +98,6 @@ jobs:
           passbolt-passphrase: ${{ secrets.PASSBOLT_PASSPHRASE }}
           passbolt-resource-id-staging: ${{ secrets.PASSBOLT_RESOURCE_ID_STAGING }}
           passbolt-resource-id-production: ${{ secrets.PASSBOLT_RESOURCE_ID_PRODUCTION }}
-          env-file: ${{ secrets.ENV_FILE }}
 
       - name: Setup Ruby + fastlane
         uses: ./.github/actions/setup-ruby-fastlane
