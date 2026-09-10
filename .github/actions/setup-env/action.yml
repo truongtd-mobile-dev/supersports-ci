@@ -32,9 +32,10 @@ inputs:
     required: true
   env-file-baseline:
     description: >-
-      Known-good .env content for this environment (e.g. `${{ secrets.ENV_FILE }}`),
-      used only to detect unexpected drift after fetching the real env from
-      Passbolt. Optional: leave empty to skip the drift check.
+      Known-good env content for this environment (pass the legacy ENV_FILE
+      secret from the caller workflow), used only to detect unexpected drift
+      after fetching the real env from Passbolt. Optional: leave empty to
+      skip the drift check.
     required: false
     default: ""
   notification-webhook-url:
