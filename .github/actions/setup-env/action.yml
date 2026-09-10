@@ -1,0 +1,156 @@
+name: Setup app env
+description: >-
+  Materialize the per-environment .env file (.env.stg / .env.live) into
+  real-code/ by fetching it from Passbolt — the same source of truth local
+  devs use via `yarn passbolt:stg|live` (scripts/passbolt-env.ts in the app
+  repo). Passbolt is the ONLY source: there is deliberately no fallback, so a
+  misconfigured secret fails the build loudly instead of silently building
+  with a stale env. Requires node_modules (run the setup-js action first) —
+  the fetch reuses the app repo's tsx script, so local and CI can never drift.
+
+inputs:
+  environment:
+    description: staging or live.
+    required: true
+  passbolt-base-url:
+    description: Passbolt server URL.
+    required: true
+  passbolt-user-id:
+    description: Passbolt user id (uuid) owning the env resources.
+    required: true
+  passbolt-private-key:
+    description: Armored OpenPGP private key of the Passbolt user.
+    required: true
+  passbolt-passphrase:
+    description: Base64-encoded passphrase of the private key (same encoding as local .env.passbolt).
+    required: true
+  passbolt-resource-id-staging:
+    description: Passbolt resource id holding the staging .env content.
+    required: true
+  passbolt-resource-id-production:
+    description: Passbolt resource id holding the production .env content.
+    required: true
+  env-file-baseline:
+    description: >-
+      Known-good env content for this environment (pass the legacy ENV_FILE
+      secret from the caller workflow), used only to detect unexpected drift
+      after fetching the real env from Passbolt. Optional: leave empty to
+      skip the drift check.
+    required: false
+    default: ""
+  notification-webhook-url:
+    description: >-
+      Webhook URL to notify when Passbolt drift is detected. Optional: leave
+      empty to skip notifying.
+    required: false
+    default: ""
+  project-name:
+    description: Project name included in the drift notification payload.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch env from Passbolt
+      shell: bash
+      working-directory: real-code
+      env:
+        BUILD_ENV: ${{ inputs.environment }}
+        PASSBOLT_BASE_URL: ${{ inputs.passbolt-base-url }}
+        PASSBOLT_USER_ID: ${{ inputs.passbolt-user-id }}
+        PASSBOLT_PRIVATE_KEY_ARMORED: ${{ inputs.passbolt-private-key }}
+        PASSBOLT_PASSPHRASE: ${{ inputs.passbolt-passphrase }}
+        PASSBOLT_RESOURCE_ID_STAGING: ${{ inputs.passbolt-resource-id-staging }}
+        PASSBOLT_RESOURCE_ID_PRODUCTION: ${{ inputs.passbolt-resource-id-production }}
+      run: |
+        # `required: true` on composite-action inputs is advisory only —
+        # enforce it for real so a missing secret fails with the actual cause.
+        if [ -z "$PASSBOLT_BASE_URL" ] || [ -z "$PASSBOLT_USER_ID" ] || [ -z "$PASSBOLT_PRIVATE_KEY_ARMORED" ] || [ -z "$PASSBOLT_PASSPHRASE" ] || [ -z "$PASSBOLT_RESOURCE_ID_STAGING" ] || [ -z "$PASSBOLT_RESOURCE_ID_PRODUCTION" ]; then
+          echo "::error::PASSBOLT_* secrets are missing or empty — configure the repository secrets listed in the README (Secrets section)."
+          exit 1
+        fi
+        # Workflows say staging|live; the script says staging|production.
+        if [ "$BUILD_ENV" = "staging" ]; then ENV_NAME=staging; else ENV_NAME=production; fi
+        yarn tsx scripts/passbolt-env.ts "$ENV_NAME"
+        echo "Env for $BUILD_ENV fetched from Passbolt."
+
+    # Non-blocking safety net: compares only key names (added/removed/changed),
+    # never values, against a known-good snapshot (the legacy ENV_FILE secret,
+    # repurposed as a manually-maintained baseline now that Passbolt is the
+    # real source). continue-on-error guarantees a bug here can never fail a
+    # build — this step is pure observability.
+    - name: Check Passbolt drift vs known-good baseline
+      id: passbolt-drift
+      shell: bash
+      continue-on-error: true
+      working-directory: real-code
+      env:
+        BUILD_ENV: ${{ inputs.environment }}
+        ENV_FILE_BASELINE: ${{ inputs.env-file-baseline }}
+      run: |
+        export LC_ALL=C
+
+        if [ -z "$ENV_FILE_BASELINE" ]; then
+          echo "No baseline configured (env-file-baseline input empty) — skipping Passbolt drift check."
+          echo "drift=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if [ "$BUILD_ENV" = "staging" ]; then CURRENT_FILE=.env.stg; else CURRENT_FILE=.env.live; fi
+
+        # Strip CR (Windows line endings) and surrounding whitespace, then keep
+        # only strict KEY=VALUE lines. This also drops comments/blanks and —
+        # critically — continuation lines of a multi-line quoted value (which
+        # have no leading KEY=), so a raw secret-value fragment can never be
+        # mistaken for a "key name" and surfaced in a log or Mattermost message.
+        normalize() {
+          sed 's/\r$//' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' || true
+        }
+
+        current="$(normalize < "$CURRENT_FILE" | sort -u)"
+        baseline="$(printf '%s\n' "$ENV_FILE_BASELINE" | normalize | sort -u)"
+
+        current_keys="$(printf '%s\n' "$current" | cut -d= -f1 | sort -u)"
+        baseline_keys="$(printf '%s\n' "$baseline" | cut -d= -f1 | sort -u)"
+
+        added="$(comm -23 <(printf '%s\n' "$current_keys") <(printf '%s\n' "$baseline_keys"))"
+        removed="$(comm -13 <(printf '%s\n' "$current_keys") <(printf '%s\n' "$baseline_keys"))"
+
+        # Full-line diff (key=value) narrowed to keys that already existed in
+        # the baseline: that's a changed value, not a brand-new key.
+        diff_keys="$(comm -23 <(printf '%s\n' "$current") <(printf '%s\n' "$baseline") | cut -d= -f1 | sort -u)"
+        changed="$(comm -12 <(printf '%s\n' "$diff_keys") <(printf '%s\n' "$baseline_keys"))"
+
+        to_oneline() { tr '\n' ' ' | sed 's/[[:space:]]*$//'; }
+        added_str="$(printf '%s\n' "$added" | to_oneline)"
+        removed_str="$(printf '%s\n' "$removed" | to_oneline)"
+        changed_str="$(printf '%s\n' "$changed" | to_oneline)"
+
+        if [ -z "$added_str" ] && [ -z "$removed_str" ] && [ -z "$changed_str" ]; then
+          echo "Passbolt env for $BUILD_ENV matches known-good baseline ($CURRENT_FILE) — no drift."
+          echo "drift=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "::warning::Passbolt env for $BUILD_ENV drifted from the known-good baseline ($CURRENT_FILE)."
+        [ -n "$added_str" ] && echo "Added keys: $added_str"
+        [ -n "$removed_str" ] && echo "Removed keys: $removed_str"
+        [ -n "$changed_str" ] && echo "Changed keys: $changed_str"
+
+        echo "drift=true" >> "$GITHUB_OUTPUT"
+        echo "summary=added=[${added_str:-none}] removed=[${removed_str:-none}] changed=[${changed_str:-none}]" >> "$GITHUB_OUTPUT"
+
+    - name: Notify Passbolt drift to Mattermost
+      if: steps.passbolt-drift.outputs.drift == 'true' && inputs.notification-webhook-url != ''
+      continue-on-error: true
+      uses: ./.github/actions/notify-failure
+      with:
+        message: >-
+          Passbolt env drift for ${{ inputs.environment }}:
+          ${{ steps.passbolt-drift.outputs.summary }} — confirm this was an
+          intentional Passbolt change, then update the ENV_FILE secret
+          (environment: ${{ inputs.environment }}) to match.
+        webhook-url: ${{ inputs.notification-webhook-url }}
+        project-name: ${{ inputs.project-name }}
+        status: "999"
