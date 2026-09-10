@@ -48,7 +48,7 @@ runs:
       run: |
         # `required: true` on composite-action inputs is advisory only —
         # enforce it for real so a missing secret fails with the actual cause.
-        if [ -z "$PASSBOLT_BASE_URL" ] || [ -z "$PASSBOLT_USER_ID" ] || [ -z "$PASSBOLT_PRIVATE_KEY_ARMORED" ] || [ -z "$PASSBOLT_PASSPHRASE" ]; then
+        if [ -z "$PASSBOLT_BASE_URL" ] || [ -z "$PASSBOLT_USER_ID" ] || [ -z "$PASSBOLT_PRIVATE_KEY_ARMORED" ] || [ -z "$PASSBOLT_PASSPHRASE" ] || [ -z "$PASSBOLT_RESOURCE_ID_STAGING" ] || [ -z "$PASSBOLT_RESOURCE_ID_PRODUCTION" ]; then
           echo "::error::PASSBOLT_* secrets are missing or empty — configure the repository secrets listed in the README (Secrets section)."
           exit 1
         fi
