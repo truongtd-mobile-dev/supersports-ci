@@ -3,7 +3,10 @@ name: Android build (reusable)
 # Reusable Android build. Drives both the APK (internal testing) and AAB
 # (release) lanes — the only difference is the `kind` input, forwarded verbatim
 # to `fastlane setup ... kind:<kind>`. Callers: internal-testing.yml (apk),
-# aab.yml (aab). The release keystore is written only for the live environment.
+# aab.yml (aab). A signing keystore is written for both environments — live and
+# staging each have their own key (Android Developer Verification requires a
+# real, registered signing key even for internal/staging sideload builds; see
+# docs/code-logic/policy/android-developer-verification.md in the app repo).
 
 on:
   workflow_call:
@@ -120,7 +123,7 @@ jobs:
           path: real-code/android
           key: android-build-v2-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/patches/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/firebase/**', 'real-code/.env.stg', 'real-code/.env.live') }}
 
-      - name: Write Android keystore (live only)
+      - name: Write Android keystore (live)
         if: inputs.environment == 'live'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -136,6 +139,29 @@ jobs:
             printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
             printf 'keyAlias=%s\n' "$KEY_ALIAS"
             printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > keystore.properties
+
+      # Staging APK/AAB must be signed with a real, registered key too (Android
+      # Developer Verification) — no longer allowed to fall back to the debug
+      # keystore. Keys are distinct from the live ones (see
+      # plugins/withAndroidReleaseSigning.js in the app repo for the matching
+      # stagingStoreFile/stagingKeyAlias/... property names it reads).
+      - name: Write Android keystore (staging)
+        if: inputs.environment == 'staging'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_STAGING_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STAGING_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_STAGING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_STAGING_KEY_PASSWORD }}
+        working-directory: real-code
+        run: |
+          mkdir -p credentials
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > credentials/staging-upload.jks
+          {
+            printf 'stagingStoreFile=credentials/staging-upload.jks\n'
+            printf 'stagingStorePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'stagingKeyAlias=%s\n' "$KEY_ALIAS"
+            printf 'stagingKeyPassword=%s\n' "$KEY_PASSWORD"
           } > keystore.properties
 
       - name: Build Android via fastlane
