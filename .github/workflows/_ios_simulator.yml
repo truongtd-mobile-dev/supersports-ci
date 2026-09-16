@@ -53,14 +53,25 @@ jobs:
           private-repo-path: ${{ secrets.PRIVATE_REPO_PATH }}
           branch: ${{ inputs.branch }}
 
-      - name: Write app secrets
-        uses: ./.github/actions/write-app-secrets
-        with:
-          environment: ${{ inputs.environment }}
-          env-file: ${{ secrets.ENV_FILE }}
-
       - name: Setup JS
         uses: ./.github/actions/setup-js
+
+      # After Setup JS on purpose: the Passbolt fetch runs the app repo's tsx
+      # script, which needs node_modules. Must stay before every cache step
+      # that hashes .env.stg/.env.live.
+      - name: Setup app env
+        uses: ./.github/actions/setup-env
+        with:
+          environment: ${{ inputs.environment }}
+          passbolt-base-url: ${{ secrets.PASSBOLT_BASE_URL }}
+          passbolt-user-id: ${{ secrets.PASSBOLT_USER_ID }}
+          passbolt-private-key: ${{ secrets.PASSBOLT_PRIVATE_KEY_ARMORED }}
+          passbolt-passphrase: ${{ secrets.PASSBOLT_PASSPHRASE }}
+          passbolt-resource-id-staging: ${{ secrets.PASSBOLT_RESOURCE_ID_STAGING }}
+          passbolt-resource-id-production: ${{ secrets.PASSBOLT_RESOURCE_ID_PRODUCTION }}
+          env-file-baseline: ${{ secrets.ENV_FILE }}
+          notification-webhook-url: ${{ secrets.NOTIFICATION_WEBHOOK_URL }}
+          project-name: ${{ vars.PROJECT_NAME }}
 
       - name: Setup Ruby + fastlane
         uses: ./.github/actions/setup-ruby-fastlane

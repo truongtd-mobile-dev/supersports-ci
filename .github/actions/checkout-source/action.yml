@@ -16,6 +16,10 @@ inputs:
   branch:
     description: Branch to clone.
     required: true
+  private-port:
+    description: SSH port of the Gitea host.
+    required: false
+    default: "2222"
   match-git-url:
     description: >-
       fastlane Match repo URL. When set and on a different host than the Gitea
@@ -31,12 +35,13 @@ runs:
       env:
         SSH_PRIVATE_KEY: ${{ inputs.ssh-private-key }}
         PRIVATE_HOST: ${{ inputs.private-host }}
+        PRIVATE_PORT: ${{ inputs.private-port }}
         MATCH_GIT_URL: ${{ inputs.match-git-url }}
       run: |
         mkdir -p ~/.ssh
         printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
         chmod 600 ~/.ssh/id_ed25519
-        ssh-keyscan -p 2222 "$PRIVATE_HOST" >> ~/.ssh/known_hosts
+        ssh-keyscan -p "$PRIVATE_PORT" "$PRIVATE_HOST" >> ~/.ssh/known_hosts
 
         # Trust the Match repo host too when it lives on a different server.
         if [ -n "$MATCH_GIT_URL" ]; then
@@ -52,7 +57,7 @@ runs:
         {
           printf 'Host %s\n' "$PRIVATE_HOST"
           printf '  HostName %s\n' "$PRIVATE_HOST"
-          printf '  Port 2222\n'
+          printf '  Port %s\n' "$PRIVATE_PORT"
           printf '  IdentityFile ~/.ssh/id_ed25519\n'
           printf '  StrictHostKeyChecking yes\n'
         } > ~/.ssh/config
@@ -62,11 +67,12 @@ runs:
       shell: bash
       env:
         PRIVATE_HOST: ${{ inputs.private-host }}
+        PRIVATE_PORT: ${{ inputs.private-port }}
         PRIVATE_REPO_PATH: ${{ inputs.private-repo-path }}
         BUILD_BRANCH: ${{ inputs.branch }}
       run: |
         git clone --depth 1 \
           --branch "$BUILD_BRANCH" \
           --single-branch \
-          "ssh://git@${PRIVATE_HOST}:2222/${PRIVATE_REPO_PATH}" \
+          "ssh://git@${PRIVATE_HOST}:${PRIVATE_PORT}/${PRIVATE_REPO_PATH}" \
           real-code
