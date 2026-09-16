@@ -7,12 +7,18 @@ runs:
   using: composite
   steps:
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: "24"
+        # v5 auto-enables its own package-manager cache when package.json has a
+        # `packageManager` field. This repo already caches node_modules below on
+        # a hand-tuned key, and a second cache layer would burn quota for
+        # nothing. Pinned off so adding `packageManager` later cannot silently
+        # switch it on.
+        package-manager-cache: false
 
     - name: Cache node_modules
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         # Cache only node_modules — `yarn install --immutable` verifies integrity
         # against yarn.lock and no-ops on hit. OS + Node major scoped so Linux

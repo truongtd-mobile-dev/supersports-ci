@@ -12,7 +12,7 @@ runs:
         ruby-version: "3.2.6"
 
     - name: Cache Ruby gems
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: real-code/fastlane/vendor/bundle
         key: gem-v1-${{ runner.os }}-${{ hashFiles('real-code/fastlane/Gemfile.lock') }}

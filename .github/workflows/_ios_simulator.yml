@@ -35,7 +35,7 @@ jobs:
 
     steps:
       - name: Checkout CI repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Same single-source expression as _ios.yml — bump the XCODE_VERSION
       # repo variable to move every workflow at once.
@@ -77,7 +77,7 @@ jobs:
         uses: ./.github/actions/setup-ruby-fastlane
 
       - name: Cache CocoaPods downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/Library/Caches/CocoaPods
           key: cocoapods-v1-${{ runner.os }}-${{ hashFiles('real-code/yarn.lock') }}
@@ -93,7 +93,7 @@ jobs:
       # exact hits are worth restoring.
       - name: Cache iOS simulator build
         id: cache-ios-sim
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: real-code/ios
           key: ios-sim-build-v2-${{ inputs.environment }}-${{ hashFiles('real-code/app.config.js', 'real-code/app.json', 'real-code/plugins/**', 'real-code/patches/**', 'real-code/yarn.lock', 'real-code/assets/logo-app/**', 'real-code/assets/braze/**', 'real-code/assets/checkout/**', 'real-code/assets/launchscreen-ios/**', 'real-code/firebase/**', 'real-code/.env.stg', 'real-code/.env.live') }}
@@ -111,7 +111,7 @@ jobs:
 
       - name: Upload .app.zip artifact (backup)
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: maestro-sim-${{ inputs.environment }}-${{ github.run_id }}
           path: real-code/ios/DerivedData/Build/Products/Release-iphonesimulator/*.app.zip

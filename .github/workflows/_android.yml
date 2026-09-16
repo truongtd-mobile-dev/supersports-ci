@@ -46,7 +46,17 @@ jobs:
       # .github/actions are on disk. The app source is cloned separately into
       # real-code/ by the checkout-source action below.
       - name: Checkout CI repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      # Runner spec, logged so build-time regressions can be read against the
+      # hardware that produced them (GitHub changes hosted runner sizes without
+      # notice, and the gradle --max-workers count is tuned to vCPUs).
+      - name: Runner spec
+        continue-on-error: true
+        run: |
+          echo "cpus=$(nproc) arch=$(uname -m)"
+          free -h | head -2
+          df -h / | tail -1
 
       - name: Checkout app source
         uses: ./.github/actions/checkout-source
@@ -80,13 +90,13 @@ jobs:
         uses: ./.github/actions/setup-ruby-fastlane
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: "temurin"
           java-version: "17"
 
       - name: Cache Gradle (deps + build cache)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           # Includes the build-output cache (build-cache-*), paired with
           # org.gradle.caching=true from withAndroidGradleBuildCache. Gradle
@@ -111,7 +121,7 @@ jobs:
 
       - name: Cache Android native build
         id: cache-android
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           # iOS-only assets (launchscreen-ios) are dropped from the hash so an
           # iOS asset change does not invalidate Android prebuild output.
@@ -178,7 +188,7 @@ jobs:
 
       - name: Upload build artifact (backup)
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-${{ inputs.kind }}-${{ inputs.environment }}-${{ github.run_id }}
           path: |
