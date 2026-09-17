@@ -23,7 +23,12 @@ permissions:
 jobs:
   build:
     name: iOS simulator (${{ inputs.environment }})
-    runs-on: macos-latest
+    # Same pin as _ios.yml, sharing the MACOS_RUNNER_IMAGE repo variable. This
+    # job also runs Select Xcode against XCODE_VERSION below, so leaving it on
+    # `macos-latest` would let a GitHub-side rollover break the maestro lane
+    # while the adhoc/testflight lanes stayed green. Unset keeps today's
+    # behaviour.
+    runs-on: ${{ vars.MACOS_RUNNER_IMAGE || 'macos-latest' }}
     environment: ${{ inputs.environment }}
     timeout-minutes: 90
 
